@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Результат прогноза</title>
+</head>
+<body>
+    <h1>Погода в городе {{ city }}</h1>
+    <p>Текущая температура: {{ temperature }}°C</p>
+    <p>Скорость ветра: {{ wind_speed }} км/ч</p>
+    <p>Описание: {{ weather_text }}</p>
+
+    <h2>Почасовой прогноз:</h2>
+    <ul>
+        {% for time, precip_prob in precipitation_forecast %}
+            <li>{{ time }}: Вероятность осадков {{ precip_prob }}%</li>
+        {% endfor %}
+    </ul>
+
+    <a href="/">Назад</a>
+</body>
+</html>

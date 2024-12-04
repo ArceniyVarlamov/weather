@@ -63,7 +63,35 @@ def extract_weather_details(data):
         return None, None, None
 
 
+# Получаем погоду на 12 следующих часов
+def get_hourly_forecast(location_key, api_key):
+    url = f'http://dataservice.accuweather.com/forecasts/v1/hourly/12hour/{location_key}'
+    params = {
+        'apikey': api_key,
+        'metric': 'true'  # Используем метрическую систему (градусы Цельсия)
+    }
+    try:
+        response = requests.get(url, params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        return data  # Возвращаем список прогнозов на ближайшие 12 часов
+    except requests.RequestException as e:
+        print(f"Ошибка при запросе почасового прогноза: {e}")
+        return None
 
+
+# Создадаём функцию для извлечения вероятности осадков и времени из почасового прогноза
+def extract_precipitation_forecast(forecast_data):
+    try:
+        forecast = []
+        for hour in forecast_data:
+            time = hour['DateTime']  # Время прогноза
+            precipitation_prob = hour.get('PrecipitationProbability', 0)  # Вероятность осадков
+            forecast.append((time, precipitation_prob))
+        return forecast
+    except (KeyError, TypeError) as e:
+        print(f"Ошибка при извлечении почасового прогноза: {e}")
+        return []
 
 
 
@@ -73,10 +101,9 @@ def extract_weather_details(data):
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
-    # Получаем с формы название города
-    city_name = request.form.get('city')
+    city_name = request.form.get('city')  # Получаем название города из формы
     if not city_name:
-        flash("Введите название города")
+        flash("Введите название города!")
         return redirect(url_for('home'))
     
     # Получаем location_key
@@ -97,8 +124,23 @@ def get_weather():
         flash(f"Ошибка при обработке данных о погоде для города: {city_name}")
         return redirect(url_for('home'))
 
+    # Получаем почасовой прогноз
+    hourly_forecast = get_hourly_forecast(location_key, API_KEY)
+    if not hourly_forecast:
+        flash(f"Не удалось получить почасовой прогноз для города: {city_name}")
+        return redirect(url_for('home'))
+
+    # Извлекаем вероятность осадков
+    precipitation_forecast = extract_precipitation_forecast(hourly_forecast)
+
     # Отображаем результат
-    return f"Погода в городе {city_name}: {weather_text}, температура {temperature}°C, ветер {wind_speed} км/ч"
+    return render_template('weather_result.html',
+                           city=city_name,
+                           temperature=temperature,
+                           wind_speed=wind_speed,
+                           weather_text=weather_text,
+                           precipitation_forecast=precipitation_forecast)
+
 
 
 
