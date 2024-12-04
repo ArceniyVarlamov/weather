@@ -69,7 +69,36 @@ def extract_weather_details(data):
 
 
 
+### Серверная часть
 
+@app.route('/weather', methods=['POST'])
+def get_weather():
+    # Получаем с формы название города
+    city_name = request.form.get('city')
+    if not city_name:
+        flash("Введите название города")
+        return redirect(url_for('home'))
+    
+    # Получаем location_key
+    location_key = get_location_key(city_name, API_KEY)
+    if not location_key:
+        flash(f"Не удалось найти город: {city_name}")
+        return redirect(url_for('home'))
+
+    # Получаем данные о погоде
+    weather_data = get_current_weather(location_key, API_KEY)
+    if not weather_data:
+        flash(f"Не удалось получить данные о погоде для города: {city_name}")
+        return redirect(url_for('home'))
+
+    # Извлекаем ключевые параметры
+    temperature, wind_speed, weather_text = extract_weather_details(weather_data)
+    if temperature is None or wind_speed is None:
+        flash(f"Ошибка при обработке данных о погоде для города: {city_name}")
+        return redirect(url_for('home'))
+
+    # Отображаем результат
+    return f"Погода в городе {city_name}: {weather_text}, температура {temperature}°C, ветер {wind_speed} км/ч"
 
 
 
@@ -79,10 +108,7 @@ def extract_weather_details(data):
 
 @app.route('/')
 def home():
-    return "Добро пожаловать в сервис прогноза погоды!"
+    return render_template('index.html')
 
 if __name__ == '__main__':
-    city_name = "Москва"
-    location_key = get_location_key(city_name, API_KEY)
-    print(f"Location Key для города {city_name}: {location_key}")
     app.run(debug=True)
