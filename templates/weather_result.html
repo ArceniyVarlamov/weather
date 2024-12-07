@@ -6,17 +6,17 @@
     <title>Результат прогноза</title>
 </head>
 <body>
-    <h1>Погода в городе {{ city }}</h1>
-    <p>Текущая температура: {{ temperature }}°C</p>
-    <p>Скорость ветра: {{ wind_speed }} км/ч</p>
-    <p>Описание: {{ weather_text }}</p>
+    <h2>Начальная точка: {{ start_city }}</h2>
+    <p>Температура: {{ start_temp }}°C</p>
+    <p>Скорость ветра: {{ start_wind }} км/ч</p>
+    <p>Вероятность осадков: {{ start_precip }}%</p>
+    <p>Погодный статус: {{ start_status }}</p>
 
-    <h2>Почасовой прогноз:</h2>
-    <ul>
-        {% for time, precip_prob in precipitation_forecast %}
-            <li>{{ time }}: Вероятность осадков {{ precip_prob }}%</li>
-        {% endfor %}
-    </ul>
+    <h2>Конечная точка: {{ end_city }}</h2>
+    <p>Температура: {{ end_temp }}°C</p>
+    <p>Скорость ветра: {{ end_wind }} км/ч</p>
+    <p>Вероятность осадков: {{ end_precip }}%</p>
+    <p>Погодный статус: {{ end_status }}</p>
 
     <a href="/">Назад</a>
 </body>

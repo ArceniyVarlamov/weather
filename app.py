@@ -94,6 +94,43 @@ def extract_precipitation_forecast(forecast_data):
         return []
 
 
+# Логика проверки на плохую погоду
+def check_bad_weather(temperature, wind_speed, precip_prob):
+    if temperature > 35:
+        if wind_speed > 20:
+            if precip_prob > 70:
+                return "Очень жаркая погода с сильным ветром и высокой вероятностью осадков."
+            else:
+                return "Очень жаркая погода с сильным ветром."
+        elif precip_prob > 70:
+            return "Очень жаркая погода с высокой вероятностью осадков."
+        else:
+            return "Очень жаркая и сухая погода."
+
+    elif temperature > 25:
+        if wind_speed > 20:
+            return "Тёплая погода с сильным ветром."
+        elif precip_prob > 70:
+            return "Тёплая погода с высокой вероятностью осадков."
+        else:
+            return "Тёплая и хорошая погода."
+
+    elif temperature > 15:
+        if wind_speed > 20 or precip_prob > 70:
+            return "Прохладная погода с ветром или осадками."
+        else:
+            return "Прохладная и спокойная погода."
+
+    elif temperature > 0:
+        if wind_speed > 20:
+            return "Холодная погода с ветром."
+        elif precip_prob > 70:
+            return "Холодная погода с осадками."
+        else:
+            return "Холодная и сухая погода."
+
+    else:
+        return "Морозная погода. Одевайтесь теплее!"
 
 
 
@@ -101,45 +138,65 @@ def extract_precipitation_forecast(forecast_data):
 
 @app.route('/weather', methods=['POST'])
 def get_weather():
-    city_name = request.form.get('city')  # Получаем название города из формы
-    if not city_name:
-        flash("Введите название города!")
-        return redirect(url_for('home'))
-    
-    # Получаем location_key
-    location_key = get_location_key(city_name, API_KEY)
-    if not location_key:
-        flash(f"Не удалось найти город: {city_name}")
+    start_city = request.form.get('start')
+    end_city = request.form.get('end')
+
+    if not start_city or not end_city:
+        flash("Введите оба города!")
         return redirect(url_for('home'))
 
-    # Получаем данные о погоде
-    weather_data = get_current_weather(location_key, API_KEY)
-    if not weather_data:
-        flash(f"Не удалось получить данные о погоде для города: {city_name}")
+    # Получаем location_key для начальной точки
+    start_location_key = get_location_key(start_city, API_KEY)
+    if not start_location_key:
+        flash(f"Не удалось найти город: {start_city}")
         return redirect(url_for('home'))
 
-    # Извлекаем ключевые параметры
-    temperature, wind_speed, weather_text = extract_weather_details(weather_data)
-    if temperature is None or wind_speed is None:
-        flash(f"Ошибка при обработке данных о погоде для города: {city_name}")
+    # Получаем location_key для конечной точки
+    end_location_key = get_location_key(end_city, API_KEY)
+    if not end_location_key:
+        flash(f"Не удалось найти город: {end_city}")
         return redirect(url_for('home'))
 
-    # Получаем почасовой прогноз
-    hourly_forecast = get_hourly_forecast(location_key, API_KEY)
-    if not hourly_forecast:
-        flash(f"Не удалось получить почасовой прогноз для города: {city_name}")
+    # Получаем погоду для начальной точки
+    start_weather = get_current_weather(start_location_key, API_KEY)
+    if not start_weather:
+        flash(f"Не удалось получить погоду для города: {start_city}")
         return redirect(url_for('home'))
+    start_temp, start_wind, _ = extract_weather_details(start_weather)
 
-    # Извлекаем вероятность осадков
-    precipitation_forecast = extract_precipitation_forecast(hourly_forecast)
+    # Получаем прогноз осадков для начальной точки
+    start_forecast = get_hourly_forecast(start_location_key, API_KEY)
+    start_precip_prob = extract_precipitation_forecast(start_forecast)[0][1]
 
-    # Отображаем результат
+    # Анализ начальной точки
+    start_status = check_bad_weather(start_temp, start_wind, start_precip_prob)
+
+    # Получаем погоду для конечной точки
+    end_weather = get_current_weather(end_location_key, API_KEY)
+    if not end_weather:
+        flash(f"Не удалось получить погоду для города: {end_city}")
+        return redirect(url_for('home'))
+    end_temp, end_wind, _ = extract_weather_details(end_weather)
+
+    # Получаем прогноз осадков для конечной точки
+    end_forecast = get_hourly_forecast(end_location_key, API_KEY)
+    end_precip_prob = extract_precipitation_forecast(end_forecast)[0][1]
+
+    # Анализ конечной точки
+    end_status = check_bad_weather(end_temp, end_wind, end_precip_prob)
+
     return render_template('weather_result.html',
-                           city=city_name,
-                           temperature=temperature,
-                           wind_speed=wind_speed,
-                           weather_text=weather_text,
-                           precipitation_forecast=precipitation_forecast)
+                           start_city=start_city,
+                           start_temp=start_temp,
+                           start_wind=start_wind,
+                           start_precip=start_precip_prob,
+                           start_status=start_status,
+                           end_city=end_city,
+                           end_temp=end_temp,
+                           end_wind=end_wind,
+                           end_precip=end_precip_prob,
+                           end_status=end_status)
+
 
 
 
