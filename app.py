@@ -197,8 +197,6 @@ def get_weather():
                            end_precip=end_precip_prob,
                            end_status=end_status)
 
-# Ключ мск - 294021
-
 @app.route('/')
 def home():
     return render_template('index.html')
