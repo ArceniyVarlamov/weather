@@ -1,68 +1,114 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Результаты прогноза</title>
+    <title>Итоги прогноза</title>
     <style>
+        /* Общие стили */
         body {
-            font-family: Arial, sans-serif;
-            background: #f8f9fa;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            background: linear-gradient(120deg, #e0f7fa, #ffffff);
+            font-family: 'Trebuchet MS', sans-serif;
+            color: #444;
         }
-        .container {
-            max-width: 800px;
-            background: #fff;
-            margin: 20px auto;
-            padding: 20px;
-            border-radius: 8px;
-        }
-        h2 {
-            color: #007acc;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 20px 0;
-        }
-        th, td {
+
+        .wrapper {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #fafafa;
             border: 1px solid #ccc;
-            padding: 8px 12px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+            text-align: center;
+            margin: 0 0 20px;
+        }
+
+        .forecast-block {
+            margin-bottom: 30px;
+        }
+
+        .forecast-block h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #006064;
+            border-bottom: 1px solid #006064;
+            padding-bottom: 4px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th {
+            background: #006064;
+            color: #fff;
+            font-weight: normal;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #ccc;
+            font-size: 14px;
             text-align: left;
         }
+
         tr:nth-child(even) {
-            background-color: #eee;
+            background-color: #f0f0f0;
         }
-        a {
-            display: inline-block;
-            margin-top: 20px;
-            text-decoration: none;
-            color: white;
-            background-color: #007acc;
-            padding: 10px 15px;
+
+        .links-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+
+        .action-link {
+            padding: 10px 20px;
             border-radius: 5px;
+            background-color: #006064;
+            color: #fff;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
         }
-        a:hover {
-            background-color: #005f99;
+
+        .action-link:hover {
+            background-color: #004d52;
+        }
+
+        .no-data {
+            margin: 20px 0;
+            font-style: italic;
+            color: #888;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Прогноз погоды на {{ days }} дн.</h2>
+    <div class="wrapper">
+        <h1>Прогноз погоды на {{ days }} дн.</h1>
 
         {% if results %}
             {% for city, forecasts in results.items() %}
-                <h3>{{ city }}</h3>
-                <table>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Мин (°C)</th>
-                        <th>Макс (°C)</th>
-                        <th>Осадки днём (%)</th>
-                        <th>Осадки ночью (%)</th>
-                    </tr>
-                    {% for day_data in forecasts %}
+            <div class="forecast-block">
+                <h2>{{ city }}</h2>
+                {% if forecasts %}
+                    <table>
+                        <tr>
+                            <th>Дата</th>
+                            <th>Мин (°C)</th>
+                            <th>Макс (°C)</th>
+                            <th>Осадки днём (%)</th>
+                            <th>Осадки ночью (%)</th>
+                        </tr>
+                        {% for day_data in forecasts %}
                         <tr>
                             <td>
                                 {% if day_data.Date %}
@@ -74,15 +120,21 @@
                             <td>{{ day_data.Day.PrecipitationProbability }}</td>
                             <td>{{ day_data.Night.PrecipitationProbability }}</td>
                         </tr>
-                    {% endfor %}
-                </table>
+                        {% endfor %}
+                    </table>
+                {% else %}
+                    <div class="no-data">Для данного города прогноз недоступен</div>
+                {% endif %}
+            </div>
             {% endfor %}
         {% else %}
-            <p>Нет данных для отображения</p>
+            <div class="no-data">Нет данных для отображения</div>
         {% endif %}
 
-        <a href="/">Назад</a>  
-        <a href="/dash/">Интерактивная визуализация</a>
+        <div class="links-row">
+            <a class="action-link" href="/">Вернуться назад</a>  
+            <a class="action-link" href="/dash/">Открыть интерактивные графики</a>
+        </div>
     </div>
 </body>
 </html>
