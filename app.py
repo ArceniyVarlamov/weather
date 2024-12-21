@@ -1,19 +1,26 @@
 from flask import Flask, render_template, request, flash, redirect, url_for
 import os
-from dotenv import load_dotenv
 import requests
+from dotenv import load_dotenv
 
-# Загрузка переменных окружения
+from dash import Dash, html, dcc
+import plotly.graph_objs as go
+import plotly.express as px
+import dash_bootstrap_components as dbc
+from dash.dependencies import Input, Output
+
 load_dotenv()
-
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
-
 API_KEY = os.getenv('API_KEY')
 
-### Функции
-# Получаем ключ города (для вызова погоды по нему)
-def get_location_key(city_name, api_key):
+
+def get_location_info(city_name, api_key):
+    """
+    Запрос к AccuWeather locations/v1/cities/search, 
+    чтобы вернуть (location_key, latitude, longitude) для указанного города.
+    Возвращает (None, None, None), если город не найден.
+    """
     url = 'http://dataservice.accuweather.com/locations/v1/cities/search'
     params = {
         'apikey': api_key,
@@ -25,181 +32,250 @@ def get_location_key(city_name, api_key):
         response.raise_for_status()
         data = response.json()
         if data:
-            return data[0]['Key']
+            loc_key = data[0]['Key']
+            lat = data[0]['GeoPosition']['Latitude']
+            lon = data[0]['GeoPosition']['Longitude']
+            return loc_key, lat, lon
         else:
-            return None
+            return None, None, None
     except requests.RequestException as e:
-        print(f"Ошибка при запросе: {e}")
-        return None
-
-# Получаем погоду города по его ключу
-def get_current_weather(location_key, api_key):
-    url = f'http://dataservice.accuweather.com/currentconditions/v1/{location_key}'
-    params = {
-        'apikey': api_key,
-        'details': 'true'
-    }
-    try:
-        response = requests.get(url, params=params, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        if data:
-            return data[0]
-        else:
-            return None
-    except requests.RequestException as e:
-        print(f"Ошибка при запросе текущей погоды: {e}")
-        return None
-
-# Получаем детальную информацию с погоды (температура, скорость ветра, описание погоды)
-def extract_weather_details(data):
-    try:
-        temperature = data['Temperature']['Metric']['Value']
-        wind_speed = data['Wind']['Speed']['Metric']['Value']
-        weather_text = data['WeatherText']  # Текстовое описание погоды
-        return temperature, wind_speed, weather_text
-    except (KeyError, TypeError) as e:
-        print(f"Ошибка при извлечении данных о погоде: {e}")
+        print(f"Ошибка при запросе локации: {e}")
         return None, None, None
 
 
-# Получаем погоду на 12 следующих часов
-def get_hourly_forecast(location_key, api_key):
-    url = f'http://dataservice.accuweather.com/forecasts/v1/hourly/12hour/{location_key}'
+def get_daily_forecast(location_key, api_key, days=1):
+    """
+    Запрашиваем суточный (daily) прогноз на 1, 3 или 5 дней.
+    Возвращаем список из n элементов (где n = 1,3,5).
+    """
+    if days not in [1, 3, 5]:
+        days = 1
+    url = f'http://dataservice.accuweather.com/forecasts/v1/daily/{days}day/{location_key}'
     params = {
         'apikey': api_key,
-        'metric': 'true'  # Используем метрическую систему (градусы Цельсия)
+        'metric': 'true',
+        'language': 'ru-ru',
+        'details': 'true'  # чтобы получать PrecipitationProbability и др.
     }
     try:
         response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
         data = response.json()
-        return data  # Возвращаем список прогнозов на ближайшие 12 часов
+        return data.get("DailyForecasts", [])
     except requests.RequestException as e:
-        print(f"Ошибка при запросе почасового прогноза: {e}")
-        return None
-
-
-# Создадаём функцию для извлечения вероятности осадков и времени из почасового прогноза
-def extract_precipitation_forecast(forecast_data):
-    try:
-        forecast = []
-        for hour in forecast_data:
-            time = hour['DateTime']  # Время прогноза
-            precipitation_prob = hour.get('PrecipitationProbability', 0)  # Вероятность осадков
-            forecast.append((time, precipitation_prob))
-        return forecast
-    except (KeyError, TypeError) as e:
-        print(f"Ошибка при извлечении почасового прогноза: {e}")
+        print(f"Ошибка при запросе ежедневного прогноза: {e}")
         return []
 
-
-# Логика проверки на плохую погоду
-def check_bad_weather(temperature, wind_speed, precip_prob):
-    if temperature > 35:
-        if wind_speed > 20:
-            if precip_prob > 70:
-                return "Очень жаркая погода с сильным ветром и высокой вероятностью осадков."
-            else:
-                return "Очень жаркая погода с сильным ветром."
-        elif precip_prob > 70:
-            return "Очень жаркая погода с высокой вероятностью осадков."
-        else:
-            return "Очень жаркая и сухая погода."
-
-    elif temperature > 25:
-        if wind_speed > 20:
-            return "Тёплая погода с сильным ветром."
-        elif precip_prob > 70:
-            return "Тёплая погода с высокой вероятностью осадков."
-        else:
-            return "Тёплая и хорошая погода."
-
-    elif temperature > 15:
-        if wind_speed > 20 or precip_prob > 70:
-            return "Прохладная погода с ветром или осадками."
-        else:
-            return "Прохладная и спокойная погода."
-
-    elif temperature > 0:
-        if wind_speed > 20:
-            return "Холодная погода с ветром."
-        elif precip_prob > 70:
-            return "Холодная погода с осадками."
-        else:
-            return "Холодная и сухая погода."
-
-    else:
-        return "Морозная погода. Одевайтесь теплее!"
-
-
-
-### Серверная часть
-
-@app.route('/weather', methods=['POST'])
-def get_weather():
-    start_city = request.form.get('start')
-    end_city = request.form.get('end')
-
-    if not start_city or not end_city:
-        flash("Введите оба города!")
-        return redirect(url_for('home'))
-
-    # Получаем location_key для начальной точки
-    start_location_key = get_location_key(start_city, API_KEY)
-    if not start_location_key:
-        flash(f"Не удалось найти город: {start_city}")
-        return redirect(url_for('home'))
-
-    # Получаем location_key для конечной точки
-    end_location_key = get_location_key(end_city, API_KEY)
-    if not end_location_key:
-        flash(f"Не удалось найти город: {end_city}")
-        return redirect(url_for('home'))
-
-    # Получаем погоду для начальной точки
-    start_weather = get_current_weather(start_location_key, API_KEY)
-    if not start_weather:
-        flash(f"Не удалось получить погоду для города: {start_city}")
-        return redirect(url_for('home'))
-    start_temp, start_wind, _ = extract_weather_details(start_weather)
-
-    # Получаем прогноз осадков для начальной точки
-    start_forecast = get_hourly_forecast(start_location_key, API_KEY)
-    start_precip_prob = extract_precipitation_forecast(start_forecast)[0][1]
-
-    # Анализ начальной точки
-    start_status = check_bad_weather(start_temp, start_wind, start_precip_prob)
-
-    # Получаем погоду для конечной точки
-    end_weather = get_current_weather(end_location_key, API_KEY)
-    if not end_weather:
-        flash(f"Не удалось получить погоду для города: {end_city}")
-        return redirect(url_for('home'))
-    end_temp, end_wind, _ = extract_weather_details(end_weather)
-
-    # Получаем прогноз осадков для конечной точки
-    end_forecast = get_hourly_forecast(end_location_key, API_KEY)
-    end_precip_prob = extract_precipitation_forecast(end_forecast)[0][1]
-
-    # Анализ конечной точки
-    end_status = check_bad_weather(end_temp, end_wind, end_precip_prob)
-
-    return render_template('weather_result.html',
-                           start_city=start_city,
-                           start_temp=start_temp,
-                           start_wind=start_wind,
-                           start_precip=start_precip_prob,
-                           start_status=start_status,
-                           end_city=end_city,
-                           end_temp=end_temp,
-                           end_wind=end_wind,
-                           end_precip=end_precip_prob,
-                           end_status=end_status)
 
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+@app.route('/weather', methods=['POST'])
+def get_weather():
+    # Список городов (некоторые могут быть пустыми, если пользователь не заполнил)
+    all_cities = request.form.getlist('cities')
+    # Фильтруем пустые поля
+    cities = [c.strip() for c in all_cities if c.strip()]
+
+    if not cities:
+        flash("Введите хотя бы один город!")
+        return redirect(url_for('home'))
+
+    # Количество дней для прогноза
+    days = int(request.form.get('days', 1))
+
+    # Здесь сохраним результаты: { 'Город': [список дневных прогнозов], ... }
+    forecast_results = {}
+    # Сохраняем координаты: { 'Город': (lat, lon), ... }
+    coord_results = {}
+
+    for city in cities:
+        location_key, lat, lon = get_location_info(city, API_KEY)
+        if not location_key:
+            flash(f"Не удалось найти город: {city}")
+            continue
+
+        forecast_data = get_daily_forecast(location_key, API_KEY, days=days)
+        forecast_results[city] = forecast_data
+        coord_results[city] = (lat, lon)
+
+    # Сохраняем всё для Dash
+    global g_route_data
+    g_route_data = {
+        'days': days,
+        'cities_order': cities,             # порядок ввода (важно для линии маршрута)
+        'forecast_data': forecast_results,  # { city: [DailyForecasts] }
+        'coords_data': coord_results        # { city: (lat, lon) }
+    }
+
+    return render_template('weather_result.html', results=forecast_results, days=days)
+
+
+# Инициализируем Dash для более гибкой визуализации
+dash_app = Dash(__name__, server=app, url_base_pathname='/dash/', external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+dash_app.layout = dbc.Container([
+    html.H1("Прогноз погоды для маршрута", style={'marginTop': 20}),
+
+    # Выбор параметра для графика
+    html.Div(id='controls-container', children=[
+        dcc.Dropdown(
+            id='param-dropdown',
+            options=[
+                {'label': 'Максимальная температура', 'value': 'max_temp'},
+                {'label': 'Минимальная температура', 'value': 'min_temp'},
+                {'label': 'Вероятность осадков (днём)', 'value': 'day_precip'},
+                {'label': 'Вероятность осадков (ночью)', 'value': 'night_precip'}
+            ],
+            value='max_temp',
+            clearable=False
+        )
+    ], style={'marginBottom': 20}),
+
+    # График прогноза
+    dcc.Graph(id='weather-graph', style={'marginTop': 20}),
+
+    html.H2("Карта маршрута", style={'marginTop': 40}),
+    # График с картой
+    dcc.Graph(id='map-graph', style={'marginTop': 20, 'height': '600px'}),
+
+    html.Div([
+        dcc.Link('Вернуться на главную', href='/')
+    ], style={'marginTop': 20})
+], fluid=True)
+
+
+@dash_app.callback(
+    [Output('weather-graph', 'figure'),
+     Output('map-graph', 'figure')],
+    [Input('param-dropdown', 'value')]
+)
+def update_graphs(param):
+    global g_route_data
+    if 'g_route_data' not in globals() or not g_route_data:
+        # Если нет данных, возвращаем пустые фигуры
+        return go.Figure(), go.Figure()
+
+    days = g_route_data['days']
+    # Порядок городов, в каком пользователь их вводил (важно для рисования линии)
+    cities_order = g_route_data['cities_order']
+    forecast_dict = g_route_data['forecast_data']  # { city: [list_of_days], ... }
+    coords_dict = g_route_data['coords_data']      # { city: (lat, lon) }
+
+    # ========== (1) Линейный график прогноза ==========
+    fig_line = go.Figure()
+
+    for city in cities_order:
+        daily_list = forecast_dict[city]  # список дневных прогнозов для данного города
+
+        x_labels = []
+        y_values = []
+
+        for day_forecast in daily_list:
+            date_str = day_forecast.get('Date', '')
+            if param == 'max_temp':
+                val = day_forecast['Temperature']['Maximum']['Value']
+            elif param == 'min_temp':
+                val = day_forecast['Temperature']['Minimum']['Value']
+            elif param == 'day_precip':
+                val = day_forecast['Day'].get('PrecipitationProbability', 0)
+            elif param == 'night_precip':
+                val = day_forecast['Night'].get('PrecipitationProbability', 0)
+            else:
+                val = 0
+
+            short_date = date_str.split('T')[0] if 'T' in date_str else date_str
+            x_labels.append(short_date)
+            y_values.append(val)
+
+        fig_line.add_trace(go.Scatter(
+            x=x_labels,
+            y=y_values,
+            mode='lines+markers',
+            name=city
+        ))
+
+    param_name = {
+        'max_temp': 'Макс. температура (°C)',
+        'min_temp': 'Мин. температура (°C)',
+        'day_precip': 'Осадки днём (%)',
+        'night_precip': 'Осадки ночью (%)'
+    }
+    fig_line.update_layout(
+        title=f"Прогноз на {days} дн.",
+        xaxis_title="Дата",
+        yaxis_title=param_name.get(param, 'Значение'),
+        template='plotly_white'
+    )
+
+    # ========== (2) Карта маршрута ==========
+    # Соберём массив широт/долгот в том порядке, как ввёл пользователь (это важно для рисования линии)
+    lat_list = []
+    lon_list = []
+    hover_texts = []
+
+    for city in cities_order:
+        lat, lon = coords_dict[city]
+        lat_list.append(lat)
+        lon_list.append(lon)
+
+        # Для более подробной информации во всплывающей подсказке возьмём первый день прогноза (или любой другой)
+        if forecast_dict[city]:
+            day0 = forecast_dict[city][0]
+            max_t = day0['Temperature']['Maximum']['Value']
+            min_t = day0['Temperature']['Minimum']['Value']
+            day_p = day0['Day'].get('PrecipitationProbability', 0)
+            night_p = day0['Night'].get('PrecipitationProbability', 0)
+            # Можно вывести ещё описание и т.п.
+            txt = (f"{city}\n"
+                   f"Макс. темп: {max_t}°C\n"
+                   f"Мин. темп: {min_t}°C\n"
+                   f"Осадки днём: {day_p}%\n"
+                   f"Осадки ночью: {night_p}%")
+        else:
+            txt = f"{city}\nНет данных о погоде"
+
+        hover_texts.append(txt)
+
+    # 2.1 trace: Линия маршрута (соединяем точки в порядке ввода)
+    route_trace = go.Scattermapbox(
+        lat=lat_list,
+        lon=lon_list,
+        mode='lines',  # только линия
+        line=dict(width=3, color='blue'),
+        name='Маршрут'
+    )
+
+    # 2.2 trace: Маркеры городов (с подсказками)
+    markers_trace = go.Scattermapbox(
+        lat=lat_list,
+        lon=lon_list,
+        mode='markers+text',
+        marker=go.scattermapbox.Marker(size=10, color='red'),
+        text=cities_order,          # названия городов на карте
+        textposition='top center',  # положение подписи
+        hovertext=hover_texts,
+        hoverinfo='text',
+        name='Города'
+    )
+
+    fig_map = go.Figure()
+    fig_map.add_trace(route_trace)
+    fig_map.add_trace(markers_trace)
+
+    # Настройки карты
+    fig_map.update_layout(
+        mapbox_style="open-street-map",  # не требует токена
+        mapbox_zoom=3,
+        mapbox_center={"lat": lat_list[0], "lon": lon_list[0]} if lat_list else {"lat": 55, "lon": 40},
+        margin={"r":0, "t":0, "l":0, "b":0}
+    )
+    fig_map.update_layout(title="Карта маршрута")
+
+    return fig_line, fig_map
+
 
 if __name__ == '__main__':
     app.run(debug=True)
